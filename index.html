@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>NEONBREAK v4</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+html{overflow:hidden;}body{background:#050508;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;font-family:monospace;color:#fff;}
+#wrapper{display:flex;flex-direction:column;align-items:center;gap:8px;}
+#hud{width:480px;display:flex;justify-content:space-between;align-items:center;padding:6px 10px;background:rgba(0,0,0,0.6);border:1px solid rgba(0,255,255,0.15);border-radius:6px;}
+.hud-block{display:flex;flex-direction:column;align-items:center;gap:2px;}
+.hud-label{font-size:9px;letter-spacing:2px;color:rgba(0,255,255,0.5);text-transform:uppercase;}
+.hud-val{font-size:18px;font-weight:700;color:#0ff;}
+#lives-icons{display:flex;gap:4px;align-items:center;}
+.life-dot{width:10px;height:10px;border-radius:50%;background:#f0f;}
+.life-dot.dead{background:#333;}
+#canvas-wrap{position:relative;width:480px;height:540px;}
+#gameCanvas{display:block;cursor:none;border:1px solid rgba(0,255,255,0.2);border-radius:4px;}
+#overlay{position:absolute;top:0;left:0;width:480px;height:540px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,10,0.9);border-radius:4px;gap:14px;z-index:10;}
+#overlay.hidden{display:none;}
+#ov-title{font-size:32px;font-weight:900;color:#0ff;letter-spacing:4px;text-transform:uppercase;}
+#ov-sub{font-size:11px;color:rgba(255,255,255,0.5);letter-spacing:2px;text-transform:uppercase;}
+#ov-score{font-size:22px;color:#ff0;display:none;}
+.legend{display:grid;grid-template-columns:1fr 1fr;gap:5px 20px;}
+.leg-item{font-size:10px;color:rgba(255,255,255,0.6);display:flex;align-items:center;gap:6px;}
+.leg-sw{width:16px;height:9px;border-radius:2px;flex-shrink:0;}
+#startBtn{margin-top:6px;padding:12px 36px;background:transparent;border:2px solid #0ff;color:#0ff;font-family:monospace;font-size:14px;font-weight:700;letter-spacing:2px;cursor:pointer;border-radius:4px;text-transform:uppercase;}
+#startBtn:hover{background:rgba(0,255,255,0.15);}
+#powerup-bar{width:480px;display:flex;gap:6px;padding:3px 8px;min-height:26px;align-items:center;}
+.pu-tag{font-size:10px;padding:2px 7px;border-radius:3px;border:1px solid;}
+</style>
+</head>
+<body>
+<div id="wrapper">
+  <div id="hud">
+    <div class="hud-block"><div class="hud-label">Score</div><div class="hud-val" id="scoreEl">0</div></div>
+    <div class="hud-block"><div class="hud-label">Level</div><div class="hud-val" id="levelEl">1</div></div>
+    <div class="hud-block">
+      <div class="hud-label">Lives</div>
+      <div id="lives-icons">
+        <div class="life-dot" id="l1"></div>
+        <div class="life-dot" id="l2"></div>
+        <div class="life-dot" id="l3"></div>
+      </div>
+    </div>
+    <div class="hud-block"><div class="hud-label">Combo</div><div class="hud-val" id="comboEl">x1</div></div>
+  </div>
+  <div id="canvas-wrap">
+    <canvas id="gameCanvas" width="480" height="540"></canvas>
+    <div id="overlay">
+      <div id="ov-title">NEONBREAK</div>
+      <div id="ov-sub">Mouse to move &middot; Click to launch</div>
+      <div id="ov-score"></div>
+      <div class="legend">
+        <div class="leg-item"><div class="leg-sw" style="background:#c33"></div>Armoured (multi-hit)</div>
+        <div class="leg-item"><div class="leg-sw" style="background:#f80"></div>Explosive (chain)</div>
+        <div class="leg-item"><div class="leg-sw" style="background:#8f8"></div>Ghost (pass-thru)</div>
+        <div class="leg-item"><div class="leg-sw" style="background:#a0f"></div>Gravity well</div>
+        <div class="leg-item"><div class="leg-sw" style="background:#0ef"></div>Teleport</div>
+        <div class="leg-item"><div class="leg-sw" style="background:#ff0"></div>Bonus (power-up)</div>
+      </div>
+      <button id="startBtn">START GAME</button>
+    </div>
+  </div>
+  <div id="powerup-bar"></div>
+</div>
+<script>
+// ── ZzFX sound engine (MIT, KilledByAPixel) ────────────────────────────────
+var zzfxCtx = null;
+function zzfx() {
+  var z = Array.prototype.slice.call(arguments);
+  if (!zzfxCtx) return;
+  try {
+    var h = zzfxCtx;
+    var b = (h.sampleRate * ((z[4]||.1) + (z[5]||0))) | 0;
+    var k = h.createBuffer(1, b, h.sampleRate);
+    var g = k.getChannelData(0);
+    var Vol=z[0]||1, Rnd=z[1]||.05, Freq=z[2]||220, Slide=z[3]||0;
+    var Attack=((z[4]||.1)*h.sampleRate)|0, Sustain=((z[5]||0)*h.sampleRate)|0;
+    var Decay=((z[6]||0)*h.sampleRate)|0, Shape=z[7]||0;
+    var Vibrato=z[8]||0, VibratoSpeed=z[9]||0, PitchJump=z[10]||0;
+    var PitchJumpTime=((z[11]||0)*h.sampleRate)|0, RepeatTime=((z[12]||0)*h.sampleRate)|0;
+    var Noise=z[13]||0, Tremolo=z[14]||0;
+    var sr = h.sampleRate / 44100;
+    Attack/=sr; Sustain/=sr; Decay/=sr; PitchJumpTime/=sr; RepeatTime/=sr;
+    var freq=Freq, slide=Slide, u=0, v=0, vibratoSpeed=VibratoSpeed*sr;
+    for (var e=0; e<b; e++) {
+      var t = e<Attack ? e/Attack : e<Attack+Sustain ? 1 : e<Attack+Sustain+Decay ? (Attack+Sustain+Decay-e)/Decay : 0;
+      t *= Vol * (1 - Rnd + 2*Rnd*Math.random());
+      if (PitchJump && e > PitchJumpTime) { freq += PitchJump; PitchJump = 0; }
+      if (RepeatTime && !(e % RepeatTime)) { freq = Freq; slide = Slide; }
+      freq += slide;
+      u += freq * (1 + Math.sin(v += vibratoSpeed) * Vibrato);
+      var s = Math.sin(2 * Math.PI * u / h.sampleRate);
+      if (Shape==1) s = s<0 ? -1 : 1;
+      if (Shape==2) s = (u*Freq/h.sampleRate%1)*2-1;
+      if (Shape==3) s = Math.abs(u*Freq/h.sampleRate%1*2-1)*2-1;
+      if (Noise) s = s*(1-Noise) + 2*Noise*Math.random()-Noise;
+      if (Tremolo) s *= 1 - Tremolo + Tremolo*Math.abs(Math.sin(e*.01));
+      g[e] = s * t;
+    }
+    var src = h.createBufferSource();
+    src.buffer = k;
+    src.connect(h.destination);
+    src.start();
+  } catch(ex) {}
+}
+
+var SFX = {
+  paddleHit:  function(){ zzfx(.6,.02,300,0,.02,.02,1,2,0,0,50,.01,0,0,0,0,0,.5,.01); },
+  brickBreak: function(){ zzfx(.5,.05,320,0,.04,.06,1,1.2,0,0,-60,.04,.06,0,0,0,0,.4,.03); },
+  armourHit:  function(){ zzfx(.4,.02,140,0,.02,.03,1,.4,0,0,0,0,0,0,0,.15,.08,.7,.02); },
+  explosion:  function(){ zzfx(.9,.08,60,0,.06,.18,4,.8,0,0,0,0,0,.4,.08,0,.15,.8,.04); },
+  powerUp:    function(){ zzfx(.5,.02,500,0,.05,.18,1,2,0,0,160,.05,.08,0,0,0,0,.5,.02); },
+  loseLife:   function(){ zzfx(1,.05,180,.01,.12,.28,1,-1.5,0,0,-40,.08,.12,0,0,0,.08,.6,.04); },
+  teleport:   function(){ zzfx(.5,.02,700,.01,.04,.12,1,2.5,0,-150,0,0,.08,0,0,.18,0,.4,.02); },
+  levelUp:    function(){ zzfx(.7,.02,450,0,.05,.25,1,1.8,0,80,160,.04,.08,0,0,0,0,.5,.02); },
+  multiball:  function(){ zzfx(.5,.02,380,0,.03,.1,1,1.8,0,40,0,0,0,0,0,.08,0,.4,.02); }
+};
+
+// ── Game setup ─────────────────────────────────────────────────────────────
+var canvas = document.getElementById('gameCanvas');
+var ctx = canvas.getContext('2d');
+var W = canvas.width, H = canvas.height;
+
+var state = 'title';
+var score=0, lives=3, level=1, combo=1, lastBreakTime=0;
+var mouseX = W/2;
+var balls=[], bricks=[], particles=[], drops=[], activePowerups=[];
+var paddle = {x:W/2, w:80, h:10, y:H-28, glow:0};
+var magnetBall = null, hitCount=0, frame=0, teleportCooldown=0;
+
+var BALL_BASE = 5.8, SPEED_PER_HIT = 0.035, SPEED_CAP = 12.5;
+
+// ── Input ──────────────────────────────────────────────────────────────────
+canvas.addEventListener('mousemove', function(ev) {
+  var r = canvas.getBoundingClientRect();
+  mouseX = ev.clientX - r.left;
+});
+canvas.addEventListener('click', function() {
+  if (state === 'playing' && magnetBall) launchMagnet();
+  else if (state === 'playing' && balls.every(function(b){ return !b.active; })) launchBall();
+});
+document.getElementById('startBtn').addEventListener('click', function() {
+  // Init audio context inside user gesture
+  if (!zzfxCtx) {
+    try { zzfxCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
+  }
+  if (zzfxCtx && zzfxCtx.state === 'suspended') {
+    zzfxCtx.resume().then(function(){ startGame(); });
+  } else {
+    startGame();
+  }
+});
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function rnd(a,b){ return Math.random()*(b-a)+a; }
+function irnd(a,b){ return Math.floor(rnd(a,b+1)); }
+function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
+function dist(a,b){ return Math.hypot(a.x-b.x, a.y-b.y); }
+function currentSpeed(){ return Math.min(BALL_BASE + level*0.3 + hitCount*SPEED_PER_HIT, SPEED_CAP); }
+
+// ── Particles ──────────────────────────────────────────────────────────────
+function spawnParts(x,y,color,n,spd) {
+  for (var i=0; i<n; i++) {
+    var a = rnd(0, Math.PI*2), s = rnd(spd*.4, spd);
+    particles.push({x:x,y:y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:1,decay:rnd(.025,.055),r:rnd(2,5),color:color});
+  }
+}
+function spawnWave(x,y,color) {
+  particles.push({wave:true,x:x,y:y,r:5,maxR:60,life:1,decay:.04,color:color});
+}
+
+// ── Bricks ─────────────────────────────────────────────────────────────────
+var COLS=10, ROWS=7, BW=44, BH=16, GAP=2;
+var OX = (W-(BW+GAP)*COLS+GAP)/2, OY = 48;
+
+function makeBrick(c,r,type,hits) {
+  return {col:c, row:r, type:type, hits:hits, maxHits:hits,
+    x:OX+c*(BW+GAP), y:OY+r*(BH+GAP), w:BW, h:BH,
+    alive:true, flash:0, drop:Math.random()<.15};
+}
+function brickCol(b) {
+  if (b.type==='armoured') {
+    var t=b.hits/b.maxHits;
+    return 'rgb('+Math.round(180*t+60)+','+Math.round(40*t)+','+Math.round(40*t)+')';
+  }
+  if (b.type==='normal') return ['#0cf','#6ef','#c6f','#6fc','#fc6','#f96'][(b.col+b.row*3)%6];
+  return {explosive:'#f80',ghost:'#8f8',gravity:'#a0f',teleport:'#0ef',bonus:'#ff0'}[b.type]||'#fff';
+}
+function buildLevel(lvl) {
+  bricks = [];
+  var rows = Math.min(4+lvl, ROWS);
+  for (var r=0; r<rows; r++) {
+    for (var c=0; c<COLS; c++) {
+      var type='normal', hits=1, rand=Math.random();
+      if (lvl>=2 && rand<.08)      { type='explosive'; }
+      else if (lvl>=1 && rand<.14) { type='armoured'; hits=lvl>=3?3:2; }
+      else if (lvl>=2 && rand<.19) { type='ghost'; }
+      else if (lvl>=3 && rand<.23) { type='gravity'; }
+      else if (lvl>=3 && rand<.27) { type='teleport'; }
+      else if (rand<.32)           { type='bonus'; }
+      bricks.push(makeBrick(c,r,type,hits));
+    }
+  }
+}
+
+// ── Ball ───────────────────────────────────────────────────────────────────
+function makeBall(x,y,vx,vy) {
+  return {x:x,y:y,vx:vx,vy:vy,r:7,active:true,trail:[],gh:{}};
+}
+function spawnBall() {
+  var a = rnd(-Math.PI*.7,-Math.PI*.3), s = currentSpeed();
+  balls.push(makeBall(paddle.x, paddle.y-14, Math.cos(a)*s, Math.sin(a)*s));
+}
+function launchBall() { if (magnetBall) launchMagnet(); else spawnBall(); }
+function launchMagnet() {
+  if (!magnetBall) return;
+  var a = rnd(-Math.PI*.75,-Math.PI*.25), s = currentSpeed();
+  magnetBall.vx = Math.cos(a)*s; magnetBall.vy = Math.sin(a)*s;
+  magnetBall = null;
+}
+function spawnBallOnPaddle() {
+  var b = makeBall(paddle.x, paddle.y-paddle.h/2-8, 0, 0);
+  balls.push(b); magnetBall = b;
+  activePowerups.forEach(function(p){ expirePowerup(p.type); });
+  activePowerups=[]; drops=[];
+}
+
+// ── Power-ups ──────────────────────────────────────────────────────────────
+var PU_TYPES  = ['multiball','wide','slowmo','magnet'];
+var PU_COLORS = {multiball:'#f0f',wide:'#0f0',slowmo:'#0cf',magnet:'#ff0'};
+var PU_LABELS = {multiball:'MULTI-BALL',wide:'WIDE PAD',slowmo:'SLOW-MO',magnet:'MAGNET'};
+
+function dropPU(x,y) {
+  drops.push({x:x,y:y,vy:1.8,w:52,h:14,type:PU_TYPES[irnd(0,PU_TYPES.length-1)],alive:true});
+}
+function activatePU(type) {
+  var ex = null;
+  for (var i=0;i<activePowerups.length;i++) { if(activePowerups[i].type===type){ex=activePowerups[i];break;} }
+  if (ex) { ex.timer=600; SFX.powerUp(); return; }
+  if (type==='multiball') {
+    SFX.multiball();
+    var active = balls.filter(function(b){return b.active;});
+    active.forEach(function(b){
+      var a=Math.atan2(b.vy,b.vx), s=Math.hypot(b.vx,b.vy);
+      balls.push(makeBall(b.x,b.y,Math.cos(a+.4)*s,Math.sin(a+.4)*s));
+      balls.push(makeBall(b.x,b.y,Math.cos(a-.4)*s,Math.sin(a-.4)*s));
+    });
+    return;
+  }
+  SFX.powerUp();
+  if (type==='wide') { paddle.w=130; activePowerups.push({type:type,timer:500}); return; }
+  if (type==='slowmo') { balls.forEach(function(b){b.vx*=.55;b.vy*=.55;}); activePowerups.push({type:type,timer:400}); return; }
+  if (type==='magnet') { activePowerups.push({type:type,timer:350}); return; }
+}
+function expirePowerup(type) {
+  if (type==='wide') paddle.w=80;
+  if (type==='slowmo') {
+    var tgt=currentSpeed();
+    balls.forEach(function(b){var s=Math.hypot(b.vx,b.vy);if(s>0){b.vx=b.vx/s*tgt;b.vy=b.vy/s*tgt;}});
+  }
+  if (type==='magnet' && magnetBall) launchMagnet();
+}
+
+// ── Collision ──────────────────────────────────────────────────────────────
+function rcTest(rx,ry,rw,rh,cx,cy,cr) {
+  var nx=clamp(cx,rx,rx+rw), ny=clamp(cy,ry,ry+rh);
+  return (cx-nx)*(cx-nx)+(cy-ny)*(cy-ny) < cr*cr;
+}
+function reflect(ball,nx,ny) {
+  var dot=ball.vx*nx+ball.vy*ny;
+  ball.vx-=2*dot*nx; ball.vy-=2*dot*ny;
+}
+function normal(rx,ry,rw,rh,cx,cy) {
+  var cx2=clamp(cx,rx,rx+rw), cy2=clamp(cy,ry,ry+rh);
+  var dx=cx-cx2, dy=cy-cy2;
+  if (dx===0&&dy===0) return [0,-1];
+  var d=Math.hypot(dx,dy); return [dx/d,dy/d];
+}
+
+// ── Hit brick ──────────────────────────────────────────────────────────────
+function hitBrick(b, fromExp) {
+  if (!b.alive) return;
+  if (b.type==='ghost' && !fromExp) return;
+  b.hits--; b.flash=1;
+  if (b.hits<=0) {
+    b.alive=false; hitCount++;
+    var now=Date.now();
+    combo = (now-lastBreakTime<500) ? Math.min(combo+1,8) : 1;
+    lastBreakTime=now;
+    score += (b.type==='bonus'?200:b.type==='armoured'?150:100)*combo*level;
+    spawnParts(b.x+b.w/2,b.y+b.h/2,brickCol(b),14,4);
+    spawnWave(b.x+b.w/2,b.y+b.h/2,brickCol(b));
+    if (b.drop||b.type==='bonus') dropPU(b.x+b.w/2,b.y+b.h/2);
+    if (b.type==='explosive') explodeBrick(b); else SFX.brickBreak();
+    updateHUD();
+  } else {
+    SFX.armourHit();
+    spawnParts(b.x+b.w/2,b.y+b.h/2,'#fff',5,2);
+  }
+}
+function explodeBrick(src) {
+  SFX.explosion();
+  spawnParts(src.x+src.w/2,src.y+src.h/2,'#f80',30,8);
+  spawnWave(src.x+src.w/2,src.y+src.h/2,'#f80');
+  bricks.forEach(function(b){
+    if (!b.alive) return;
+    if (Math.hypot((b.x+b.w/2)-(src.x+src.w/2),(b.y+b.h/2)-(src.y+src.h/2)) < (BW+GAP)*2.5)
+      setTimeout(function(){ hitBrick(b,true); }, 80);
+  });
+}
+
+// ── Gravity wells ──────────────────────────────────────────────────────────
+function applyGravity(ball) {
+  bricks.forEach(function(b){
+    if (!b.alive||b.type!=='gravity') return;
+    var bx=b.x+b.w/2, by=b.y+b.h/2, d=dist(ball,{x:bx,y:by});
+    if (d<100&&d>0) {
+      var f=.18*(1-d/100);
+      ball.vx+=(bx-ball.x)/d*f; ball.vy+=(by-ball.y)/d*f;
+      var s=Math.hypot(ball.vx,ball.vy); if(s>SPEED_CAP){ball.vx=ball.vx/s*SPEED_CAP;ball.vy=ball.vy/s*SPEED_CAP;}
+    }
+  });
+}
+
+// ── Teleport ───────────────────────────────────────────────────────────────
+function checkTeleport(ball) {
+  if (teleportCooldown>0) return;
+  var tps=bricks.filter(function(b){return b.alive&&b.type==='teleport';});
+  if (tps.length<2) return;
+  for (var i=0;i<tps.length;i++) {
+    if (rcTest(tps[i].x,tps[i].y,tps[i].w,tps[i].h,ball.x,ball.y,ball.r)) {
+      var dest=tps[(i+1+irnd(0,tps.length-2))%tps.length];
+      ball.x=dest.x+dest.w/2; ball.y=dest.y+dest.h/2;
+      SFX.teleport(); spawnParts(ball.x,ball.y,'#0ef',16,5);
+      teleportCooldown=30; return;
+    }
+  }
+}
+
+// ── Update ─────────────────────────────────────────────────────────────────
+function update() {
+  if (state!=='playing') return;
+  frame++;
+  if (teleportCooldown>0) teleportCooldown--;
+  paddle.x = clamp(mouseX, paddle.w/2, W-paddle.w/2);
+  paddle.glow = Math.max(0, paddle.glow-.05);
+
+  for (var i=activePowerups.length-1;i>=0;i--) {
+    activePowerups[i].timer--;
+    if (activePowerups[i].timer<=0) { expirePowerup(activePowerups[i].type); activePowerups.splice(i,1); }
+  }
+
+  var hasMag = activePowerups.some(function(p){return p.type==='magnet';});
+
+  balls.forEach(function(ball){
+    if (!ball.active) return;
+    ball.trail.push({x:ball.x,y:ball.y});
+    if (ball.trail.length>10) ball.trail.shift();
+    applyGravity(ball);
+    checkTeleport(ball);
+    ball.x+=ball.vx; ball.y+=ball.vy;
+
+    if (ball.x-ball.r<0)  { ball.x=ball.r;   ball.vx= Math.abs(ball.vx); }
+    if (ball.x+ball.r>W)  { ball.x=W-ball.r;  ball.vx=-Math.abs(ball.vx); }
+    if (ball.y-ball.r<0)  { ball.y=ball.r;   ball.vy= Math.abs(ball.vy); }
+
+    var px=paddle.x-paddle.w/2, py=paddle.y-paddle.h/2;
+    if (rcTest(px,py,paddle.w,paddle.h,ball.x,ball.y,ball.r) && ball.vy>0) {
+      if (hasMag && !magnetBall) { magnetBall=ball; ball.vx=0; ball.vy=0; }
+      else {
+        var rel=(ball.x-paddle.x)/(paddle.w/2);
+        var ang=-Math.PI/2+rel*Math.PI*.38;
+        var s=Math.max(Math.hypot(ball.vx,ball.vy),currentSpeed());
+        ball.vx=Math.cos(ang)*s; ball.vy=Math.sin(ang)*s;
+        ball.y=py-ball.r; paddle.glow=1; combo=1; SFX.paddleHit();
+      }
+    }
+    if (ball===magnetBall) { ball.x=paddle.x; ball.y=paddle.y-paddle.h/2-ball.r; }
+
+    for (var i=0;i<bricks.length;i++) {
+      var b=bricks[i]; if(!b.alive) continue;
+      if (!rcTest(b.x,b.y,b.w,b.h,ball.x,ball.y,ball.r)) continue;
+      if (b.type==='ghost') {
+        if (!ball.gh[i]) { ball.gh[i]=true; hitBrick(b,false); }
+        continue;
+      }
+      var nm=normal(b.x,b.y,b.w,b.h,ball.x,ball.y);
+      reflect(ball,nm[0],nm[1]);
+      ball.x+=nm[0]*(ball.r+1); ball.y+=nm[1]*(ball.r+1);
+      hitBrick(b,false);
+      var sp=Math.hypot(ball.vx,ball.vy), nsp=Math.min(sp+SPEED_PER_HIT*2,SPEED_CAP);
+      if(sp>0){ball.vx=ball.vx/sp*nsp;ball.vy=ball.vy/sp*nsp;}
+      break;
+    }
+    if (ball.y-ball.r>H) ball.active=false;
+  });
+
+  balls = balls.filter(function(b){return b.active||b===magnetBall;});
+  if (balls.length===0 && !magnetBall) {
+    lives--; updateLiveDots(); combo=1; hitCount=0; SFX.loseLife();
+    if (lives<=0) { endGame(false); return; }
+    spawnBallOnPaddle();
+  }
+
+  drops.forEach(function(d){
+    if(!d.alive) return; d.y+=d.vy;
+    var px=paddle.x-paddle.w/2, py=paddle.y-paddle.h/2;
+    if (d.x>px&&d.x<px+paddle.w&&d.y+d.h/2>py&&d.y-d.h/2<py+paddle.h) {
+      activatePU(d.type); d.alive=false; spawnParts(d.x,d.y,PU_COLORS[d.type],12,3);
+    }
+    if (d.y>H+20) d.alive=false;
+  });
+  drops = drops.filter(function(d){return d.alive;});
+
+  particles.forEach(function(p){
+    if(p.wave){p.r+=(p.maxR-p.r)*.12;p.life-=p.decay;return;}
+    p.x+=p.vx;p.y+=p.vy;p.vy+=.05;p.vx*=.97;p.vy*=.97;p.life-=p.decay;
+  });
+  particles = particles.filter(function(p){return p.life>0;});
+  bricks.forEach(function(b){if(b.flash>0)b.flash-=.1;});
+
+  if (bricks.every(function(b){return !b.alive||b.type==='gravity'||b.type==='teleport';})) {
+    level++;
+    if (level>5) { endGame(true); return; }
+    SFX.levelUp(); nextLevel();
+  }
+  updateHUD();
+}
+
+// ── Draw ───────────────────────────────────────────────────────────────────
+function drawBG() {
+  ctx.fillStyle='#060610'; ctx.fillRect(0,0,W,H);
+  ctx.save(); ctx.globalAlpha=.03;
+  for(var y=0;y<H;y+=3){ctx.fillStyle='#fff';ctx.fillRect(0,y,W,1);}
+  ctx.restore();
+  ctx.save(); ctx.globalAlpha=.04; ctx.strokeStyle='#0cf'; ctx.lineWidth=.5;
+  for(var x=0;x<W;x+=32){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+  for(var y=0;y<H;y+=32){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+  ctx.restore();
+}
+function drawBrick(b) {
+  if (!b.alive) return;
+  var col=brickCol(b), fl=b.flash>0;
+  ctx.save();
+  ctx.shadowBlur=fl?20:8; ctx.shadowColor=fl?'#fff':col;
+  ctx.fillStyle=fl?'#fff':col;
+  if(b.type==='ghost') ctx.globalAlpha=.55;
+  if(b.type==='gravity'){ctx.shadowBlur=15+Math.sin(frame*.1)*8;ctx.shadowColor='#a0f';}
+  if(b.type==='teleport'){ctx.shadowBlur=15+Math.cos(frame*.12+b.col)*8;ctx.shadowColor='#0ef';}
+  ctx.beginPath(); ctx.roundRect(b.x+1,b.y+1,b.w-2,b.h-2,3); ctx.fill();
+  if (!fl) { ctx.globalAlpha=(ctx.globalAlpha||1)*.3; ctx.fillStyle='#fff'; ctx.fillRect(b.x+2,b.y+2,b.w-4,4); }
+  if (b.type==='armoured'&&!fl) {
+    ctx.globalAlpha=1; ctx.fillStyle='#fff'; ctx.shadowBlur=0;
+    ctx.font='bold 10px monospace'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(b.hits, b.x+b.w/2, b.y+b.h/2);
+  }
+  ctx.restore();
+}
+function drawPaddle() {
+  var px=paddle.x-paddle.w/2, py=paddle.y-paddle.h/2;
+  ctx.save();
+  var hasMag=activePowerups.some(function(p){return p.type==='magnet';});
+  var hasWide=activePowerups.some(function(p){return p.type==='wide';});
+  ctx.shadowBlur=10+paddle.glow*20;
+  ctx.shadowColor=hasMag?'#ff0':hasWide?'#0f0':'#4cf';
+  var g=ctx.createLinearGradient(px,py,px+paddle.w,py+paddle.h);
+  var c=hasMag?['#ff4','#880']:hasWide?['#4f4','#080']:['#4cf','#08a'];
+  g.addColorStop(0,c[0]); g.addColorStop(1,c[1]); ctx.fillStyle=g;
+  ctx.beginPath(); ctx.roundRect(px,py,paddle.w,paddle.h,5); ctx.fill();
+  ctx.fillStyle='rgba(255,255,255,0.25)'; ctx.fillRect(px+4,py+2,paddle.w-8,3);
+  ctx.restore();
+}
+function drawBall(ball) {
+  ball.trail.forEach(function(t,i){
+    ctx.save(); ctx.globalAlpha=(i/ball.trail.length)*.35;
+    ctx.beginPath(); ctx.arc(t.x,t.y,ball.r*(i/ball.trail.length),0,Math.PI*2);
+    ctx.fillStyle='#fff'; ctx.fill(); ctx.restore();
+  });
+  ctx.save(); ctx.shadowBlur=18; ctx.shadowColor='#fff';
+  ctx.beginPath(); ctx.arc(ball.x,ball.y,ball.r,0,Math.PI*2);
+  var g=ctx.createRadialGradient(ball.x-2,ball.y-2,1,ball.x,ball.y,ball.r);
+  g.addColorStop(0,'#fff'); g.addColorStop(1,'#8cf'); ctx.fillStyle=g; ctx.fill();
+  ctx.restore();
+}
+function drawParticle(p) {
+  if (p.wave) {
+    ctx.save(); ctx.globalAlpha=p.life*.5; ctx.strokeStyle=p.color;
+    ctx.lineWidth=2; ctx.shadowBlur=8; ctx.shadowColor=p.color;
+    ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.stroke(); ctx.restore(); return;
+  }
+  ctx.save(); ctx.globalAlpha=p.life; ctx.shadowBlur=6; ctx.shadowColor=p.color;
+  ctx.fillStyle=p.color; ctx.beginPath(); ctx.arc(p.x,p.y,p.r*p.life,0,Math.PI*2);
+  ctx.fill(); ctx.restore();
+}
+function drawDrop(d) {
+  ctx.save(); ctx.shadowBlur=12; ctx.shadowColor=PU_COLORS[d.type];
+  ctx.fillStyle=PU_COLORS[d.type]; ctx.globalAlpha=.9;
+  ctx.beginPath(); ctx.roundRect(d.x-d.w/2,d.y-d.h/2,d.w,d.h,4); ctx.fill();
+  ctx.fillStyle='#000'; ctx.font='bold 8px monospace'; ctx.textAlign='center';
+  ctx.textBaseline='middle'; ctx.shadowBlur=0; ctx.globalAlpha=1;
+  ctx.fillText(PU_LABELS[d.type],d.x,d.y); ctx.restore();
+}
+function drawSpeed() {
+  var s=balls.length>0?Math.hypot(balls[0].vx,balls[0].vy):0, pct=Math.min(s/SPEED_CAP,1);
+  ctx.save(); ctx.globalAlpha=.55; ctx.fillStyle='#1a1a2e'; ctx.fillRect(8,H-14,82,6);
+  var g=ctx.createLinearGradient(8,0,90,0);
+  g.addColorStop(0,'#0cf'); g.addColorStop(.55,'#ff0'); g.addColorStop(1,'#f44');
+  ctx.fillStyle=g; ctx.fillRect(8,H-14,82*pct,6);
+  ctx.font='7px monospace'; ctx.fillStyle='#4cf'; ctx.textAlign='left';
+  ctx.fillText('SPEED',8,H-18); ctx.restore();
+}
+function render() {
+  drawBG();
+  bricks.forEach(drawBrick);
+  drops.forEach(drawDrop);
+  particles.forEach(drawParticle);
+  drawPaddle();
+  balls.forEach(drawBall);
+  drawSpeed();
+  if (magnetBall) {
+    ctx.save(); ctx.setLineDash([4,4]); ctx.strokeStyle='rgba(255,255,0,0.4)'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(magnetBall.x,magnetBall.y); ctx.lineTo(magnetBall.x,magnetBall.y-60); ctx.stroke(); ctx.restore();
+  }
+}
+
+// ── HUD ────────────────────────────────────────────────────────────────────
+function updateHUD() {
+  document.getElementById('scoreEl').textContent = score.toLocaleString();
+  document.getElementById('levelEl').textContent = level;
+  document.getElementById('comboEl').textContent = 'x'+combo;
+  var bar=document.getElementById('powerup-bar'); bar.innerHTML='';
+  activePowerups.forEach(function(p){
+    var t=document.createElement('div'); t.className='pu-tag';
+    t.textContent=PU_LABELS[p.type]+' '+Math.round(p.timer/6)+'%';
+    t.style.borderColor=PU_COLORS[p.type]; t.style.color=PU_COLORS[p.type];
+    bar.appendChild(t);
+  });
+}
+function updateLiveDots() {
+  for (var i=1;i<=3;i++)
+    document.getElementById('l'+i).className='life-dot'+(i>lives?' dead':'');
+}
+
+// ── Game flow ──────────────────────────────────────────────────────────────
+function startGame() {
+  score=0; lives=3; level=1; combo=1; hitCount=0; frame=0;
+  balls=[]; bricks=[]; particles=[]; drops=[]; activePowerups=[];
+  magnetBall=null; teleportCooldown=0; paddle.w=80;
+  buildLevel(level);
+  document.getElementById('overlay').classList.add('hidden');
+  updateLiveDots(); updateHUD();
+  state='playing'; spawnBallOnPaddle();
+}
+function nextLevel() {
+  balls=[]; drops=[]; particles=[]; activePowerups=[]; magnetBall=null;
+  paddle.w=80; teleportCooldown=0; hitCount=0;
+  buildLevel(level); spawnBallOnPaddle();
+}
+function endGame(won) {
+  state = won ? 'win' : 'gameover';
+  document.getElementById('overlay').classList.remove('hidden');
+  document.getElementById('ov-title').textContent = won ? 'YOU WIN!' : 'GAME OVER';
+  document.getElementById('ov-title').style.color = won ? '#ff0' : '#f44';
+  document.getElementById('ov-sub').textContent = won ? 'All levels cleared!' : 'Better luck next time';
+  var sc=document.getElementById('ov-score');
+  sc.textContent='Score: '+score.toLocaleString(); sc.style.display='block';
+  document.getElementById('startBtn').textContent='PLAY AGAIN';
+  document.querySelector('.legend').style.display='none';
+}
+
+// ── Loop ───────────────────────────────────────────────────────────────────
+function loop() { update(); render(); requestAnimationFrame(loop); }
+loop();
+</script>
+</body>
+</html>
